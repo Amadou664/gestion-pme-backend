@@ -146,7 +146,7 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # À la fin du fichier, autorise tout le monde pour le moment (mode dev)
-CORS_ALLOW_ALL_ORIGINS = ["https://gestion-pme.netlify.app"]
+CORS_ALLOW_ALL_ORIGINS = ["https://gestion-pme-app.netlify.app"]
 
 # Spécifie que le modèle d'utilisateur à utiliser est celui de l'application 'gestion'
 AUTH_USER_MODEL = 'gestion.User'
