@@ -151,4 +151,6 @@ CORS_ALLOW_ALL_ORIGINS = True
 # Spécifie que le modèle d'utilisateur à utiliser est celui de l'application 'gestion'
 AUTH_USER_MODEL = 'gestion.User'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', '10.0.2.2']
+# settings.py
+ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
+CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']
