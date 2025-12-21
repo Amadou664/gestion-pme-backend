@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
-
+import dj_database_url
 from pathlib import Path
 import os
 
@@ -98,14 +98,11 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'gestion_pme',        # Nom de la DB que tu as créé
-        'USER': 'postgres',  # Ou 'postgres'
-        'PASSWORD': 'Mims2408', # Attention, ce doit être ton vrai mot de passe
-        'HOST': 'localhost',           # Ou l'IP de ton serveur de DB
-        'PORT': '5432',                # Port standard de PostgreSQL
-    }
+    'default': dj_database_url.config(
+        # Cette URL est utilisée uniquement si DATABASE_URL n'est pas trouvée (donc sur ton PC)
+        default='postgresql://postgres:Mims2408@localhost:5432/gestion_pme',
+        conn_max_age=600
+    )
 }
 
 
@@ -144,13 +141,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # À la fin du fichier, autorise tout le monde pour le moment (mode dev)
-CORS_ALLOW_ALL_ORIGINS = ["https://gestion-pme.netlify.app"]
+CORS_ALLOWED_ORIGINS = [
+    "https://gestion-pme.netlify.app",
+]
 
 # Spécifie que le modèle d'utilisateur à utiliser est celui de l'application 'gestion'
 AUTH_USER_MODEL = 'gestion.User'
 
 # settings.py
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
 CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']
