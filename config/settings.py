@@ -146,11 +146,11 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 # À la fin du fichier, autorise tout le monde pour le moment (mode dev)
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = ["https://gestion-pme.netlify.app"]
 
 # Spécifie que le modèle d'utilisateur à utiliser est celui de l'application 'gestion'
 AUTH_USER_MODEL = 'gestion.User'
 
 # settings.py
-ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['*']
 CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']
