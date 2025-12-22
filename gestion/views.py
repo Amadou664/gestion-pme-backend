@@ -106,16 +106,48 @@ class VenteViewSet(viewsets.ModelViewSet):
                             .prefetch_related('lignes__article')\
                             .order_by('-date_vente')
     
+        # --- FILTRE PAR DATE POUR FLUTTER --- 
+        date_param = self.request.query_params.get('date')
+        if date_param:
+            # Filtre les ventes pour le jour précis (YYYY-MM-DD)
+            queryset = queryset.filter(date_vente__date=date_param)
+                
+        return queryset
+    
     def perform_create(self, serializer):
-        # On récupère le nom saisi manuellement dans Flutter (clé: nom_client_libre)
         nom_libre = self.request.data.get('nom_client_libre')
-        
-        serializer.save(
+        # On sauvegarde la vente
+        vente = serializer.save(
             entreprise=self.request.user.entreprise, 
             vendeur=self.request.user,
             statut='payee',
-            nom_client_libre=nom_libre  # Assure-toi que ce champ existe dans ton modèle Vente
+            nom_client_libre=nom_libre
         )
+        
+        # --- LOGIQUE : DÉDUIRE DU STOCK ---
+        for ligne in vente.lignes.all():
+            article = ligne.article
+            article.stock -= ligne.quantite  # Soustraction du stock
+            article.save()
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """Action pour annuler une vente et remettre les produits en stock"""
+        vente = self.get_object()
+        
+        if vente.statut == 'annulee':
+            return Response({'error': 'Cette vente est déjà annulée'}, status=400)
+        
+        # --- LOGIQUE : REMETTRE EN STOCK ---
+        for ligne in vente.lignes.all():
+            article = ligne.article
+            article.stock += ligne.quantite  # On rajoute ce qui avait été vendu
+            article.save()
+            
+        vente.statut = 'annulee'
+        vente.save()
+        
+        return Response({'status': 'Vente annulée et stock mis à jour'})
     
     @action(detail=True, methods=['get'], 
             authentication_classes=[SessionAuthentication, TokenAuthentication],
@@ -212,7 +244,8 @@ class ReportingViewSet(viewsets.ViewSet):
         end_date_str = request.query_params.get('end_date')
         
         # Filtres de base
-        vente_filtres = Q(entreprise=ent) 
+        # On ajoute : exclusion des ventes annulées
+        vente_filtres = Q(entreprise=ent) & ~Q(statut='annulee') 
         depense_filtres = Q(entreprise=ent) 
 
         try:
