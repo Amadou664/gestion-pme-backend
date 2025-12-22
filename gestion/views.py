@@ -17,7 +17,6 @@ from rest_framework.permissions import IsAuthenticated
 # ReportLab pour le PDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib import colors
 
 from .models import User, Article, Client, Vente, Depense
 from .serializers import (
@@ -101,15 +100,15 @@ class VenteViewSet(viewsets.ModelViewSet):
     serializer_class = VenteSerializer
     
     def get_queryset(self):
-        return Vente.objects.filter(entreprise=self.request.user.entreprise)\
-                            .select_related('client', 'vendeur')\
-                            .prefetch_related('lignes__article')\
-                            .order_by('-date_vente')
+        # On définit le queryset de base
+        queryset = Vente.objects.filter(entreprise=self.request.user.entreprise)\
+                                .select_related('client', 'vendeur')\
+                                .prefetch_related('lignes__article')\
+                                .order_by('-date_vente')
     
-        # --- FILTRE PAR DATE POUR FLUTTER --- 
+        # Filtre par date optionnel
         date_param = self.request.query_params.get('date')
         if date_param:
-            # Filtre les ventes pour le jour précis (YYYY-MM-DD)
             queryset = queryset.filter(date_vente__date=date_param)
                 
         return queryset
@@ -124,24 +123,23 @@ class VenteViewSet(viewsets.ModelViewSet):
             nom_client_libre=nom_libre
         )
         
-        # --- LOGIQUE : DÉDUIRE DU STOCK ---
+        # Logique de déduction de stock
         for ligne in vente.lignes.all():
             article = ligne.article
-            article.stock -= ligne.quantite  # Soustraction du stock
+            article.stock -= ligne.quantite
             article.save()
 
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
-        """Action pour annuler une vente et remettre les produits en stock"""
         vente = self.get_object()
         
         if vente.statut == 'annulee':
             return Response({'error': 'Cette vente est déjà annulée'}, status=400)
         
-        # --- LOGIQUE : REMETTRE EN STOCK ---
+        # Remise en stock
         for ligne in vente.lignes.all():
             article = ligne.article
-            article.stock += ligne.quantite  # On rajoute ce qui avait été vendu
+            article.stock += ligne.quantite
             article.save()
             
         vente.statut = 'annulee'
@@ -149,27 +147,21 @@ class VenteViewSet(viewsets.ModelViewSet):
         
         return Response({'status': 'Vente annulée et stock mis à jour'})
     
-    @action(detail=True, methods=['get'], 
-            authentication_classes=[SessionAuthentication, TokenAuthentication],
-            permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['get'])
     def facture_pdf(self, request, pk=None):
         vente = self.get_object() 
         buffer = io.BytesIO()
         p = canvas.Canvas(buffer, pagesize=A4)
         width, height = A4
         
-        # --- LOGIQUE D'AFFICHAGE DU NOM ---
-        # 1. On vérifie s'il y a un nom saisi manuellement
-        # 2. Sinon on prend le nom du client lié (base de données)
-        # 3. Sinon "Client Passant"
+        # Choix du nom du client
+        nom_client_final = "Client Passant"
         if vente.nom_client_libre:
             nom_client_final = vente.nom_client_libre
         elif vente.client:
             nom_client_final = vente.client.nom
-        else:
-            nom_client_final = "Client Passant"
 
-        # --- EN-TÊTE ---
+        # En-tête
         p.setFont("Helvetica-Bold", 16)
         p.drawString(50, height - 50, f"{vente.entreprise.nom.upper()}")
         
@@ -177,13 +169,12 @@ class VenteViewSet(viewsets.ModelViewSet):
         p.drawString(50, height - 65, f"Date: {vente.date_vente.strftime('%d/%m/%Y %H:%M')}")
         p.drawString(50, height - 80, f"Facture N°: #{str(vente.numero_sequentiel).zfill(4)}")
         
-        # --- CLIENT ---
         p.setFont("Helvetica-Bold", 11)
-        p.drawString(350, height - 65, f"CLIENT: {nom_client_final}") # Utilisation du nom dynamique
+        p.drawString(350, height - 65, f"CLIENT: {nom_client_final}")
         
         p.line(50, height - 100, width - 50, height - 100)
 
-        # --- TABLEAU (Entêtes) ---
+        # Tableau
         y = height - 130
         p.setFont("Helvetica-Bold", 10)
         p.drawString(50, y, "Désignation")
@@ -192,7 +183,6 @@ class VenteViewSet(viewsets.ModelViewSet):
         p.drawString(480, y, "Total")
         p.line(50, y - 5, width - 50, y - 5)
         
-        # --- LIGNES DE VENTE ---
         p.setFont("Helvetica", 10)
         for ligne in vente.lignes.all():
             y -= 25
@@ -200,28 +190,22 @@ class VenteViewSet(viewsets.ModelViewSet):
                 p.showPage()
                 y = height - 50
             p.drawString(50, y, f"{ligne.article.nom[:35]}")
-            p.drawString(280, y, f"{ligne.article.prix_vente}")
+            p.drawString(280, y, f"{ligne.prix_unitaire}") # Utiliser le prix enregistré sur la ligne
             p.drawString(380, y, f"{ligne.quantite}")
             p.drawString(480, y, f"{ligne.sous_total}")
 
-        # --- TOTAL EN BAS ---
+        # Total
         y -= 40
         p.line(350, y + 10, width - 50, y + 10)
         p.setFont("Helvetica-Bold", 14)
-        p.drawString(350, y, f"TOTAL À PAYER :")
+        p.drawString(350, y, "TOTAL À PAYER :")
         p.drawString(480, y, f"{vente.total_ttc} {vente.entreprise.devise}")
 
-        # --- PIED DE PAGE ---
-        p.setFont("Helvetica-Oblique", 9)
-        p.drawCentredString(width / 2, 50, "Merci de votre confiance ! À très bientôt.")
-        p.drawCentredString(width / 2, 35, "NB: Les marchandises vendues ne sont ni reprises ni échangées.")
-        
         p.showPage()
         p.save()
         buffer.seek(0)
-        
         return FileResponse(buffer, as_attachment=False, filename=f'Facture_{vente.id}.pdf')
-    
+
 class DepenseViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOfEntreprise]
     serializer_class = DepenseSerializer
@@ -232,7 +216,7 @@ class DepenseViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(entreprise=self.request.user.entreprise)
 
-# --- REPORTING (CORRIGÉ POUR L'ACTUALISATION) ---
+# --- REPORTING ---
 
 class ReportingViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOfEntreprise]
@@ -240,26 +224,25 @@ class ReportingViewSet(viewsets.ViewSet):
     @action(detail=False, methods=['get'], url_path='financial-summary')
     def financial_summary(self, request):
         ent = request.user.entreprise
-        start_date_str = request.query_params.get('start_date')
-        end_date_str = request.query_params.get('end_date')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
         
-        # Filtres de base
-        # On ajoute : exclusion des ventes annulées
         vente_filtres = Q(entreprise=ent) & ~Q(statut='annulee') 
         depense_filtres = Q(entreprise=ent) 
 
         try:
-            if start_date_str:
-                # Filtrage précis sur la DATE uniquement
-                vente_filtres &= Q(date_vente__date__gte=start_date_str)
-                depense_filtres &= Q(date_depense__gte=start_date_str)
-            if end_date_str:
-                vente_filtres &= Q(date_vente__date__lte=end_date_str)
-                depense_filtres &= Q(date_depense__lte=end_date_str)
+            if start_date:
+                vente_filtres &= Q(date_vente__date__gte=start_date)
+                depense_filtres &= Q(date_depense__gte=start_date)
+            if end_date:
+                vente_filtres &= Q(date_vente__date__lte=end_date)
+                depense_filtres &= Q(date_depense__lte=end_date)
         except ValueError:
             return Response({"erreur": "Format date invalide"}, status=400)
         
-        # Calcul du CA et du coût des marchandises vendues (CMV)
+        # Calcul agrégé
+        # Note : lignes__sous_total est préférable si vous l'avez en base, 
+        # sinon on calcule via F() expressions
         vente_data = Vente.objects.filter(vente_filtres).aggregate(
             total_ca=Sum('total_ttc', output_field=DecimalField()),
             total_cmv=Sum(F('lignes__quantite') * F('lignes__article__prix_achat'), output_field=DecimalField())

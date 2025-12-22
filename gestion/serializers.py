@@ -4,13 +4,11 @@ from django.db import transaction
 from .models import User, Entreprise, Article, Vente, LigneVente, Depense, Client 
 from decimal import Decimal
 
-# --- 1. SÉRIALIZERS D'AUTHENTIFICATION ET DE BASE ---
+# --- 1. SÉRIALIZERS D'AUTHENTIFICATION ---
 
-# Serializer d'Utilisateur (pour les infos de connexion/réponse)
 class UserSerializer(serializers.ModelSerializer):
     entreprise_nom = serializers.CharField(source='entreprise.nom', read_only=True)
     entreprise_id = serializers.IntegerField(source='entreprise.id', read_only=True)
-    # On utilise SerializerMethodField pour construire l'URL complète dynamiquement
     entreprise_logo = serializers.SerializerMethodField()
 
     class Meta:
@@ -18,22 +16,17 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ('id', 'username', 'email', 'role', 'entreprise_id', 'entreprise_nom', 'entreprise_logo')
 
     def get_entreprise_logo(self, obj):
-        """Retourne l'URL complète du logo si elle existe"""
         if obj.entreprise and obj.entreprise.logo:
-            # Récupère l'objet request pour construire une URL absolue (avec http://127.0.0.1:8000)
             request = self.context.get('request')
             if request is not None:
                 return request.build_absolute_uri(obj.entreprise.logo.url)
-            # Fallback si la requête n'est pas dans le contexte
             return obj.entreprise.logo.url
         return None
 
-# Serializer d'Inscription
 class EntrepriseRegistrationSerializer(serializers.Serializer):
     entreprise_nom = serializers.CharField(max_length=100, write_only=True) 
-    # MODIFICATION ICI : ImageField au lieu de URLField
     logo = serializers.ImageField(required=False, allow_null=True, write_only=True) 
-    devise = serializers.CharField(max_length=3, default='EUR', write_only=True) 
+    devise = serializers.CharField(max_length=3, default='CFA', write_only=True) 
     username = serializers.CharField(max_length=150)
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
@@ -45,14 +38,11 @@ class EntrepriseRegistrationSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         with transaction.atomic():
-            # 1. Création de l'Entreprise avec le logo
             entreprise = Entreprise.objects.create(
                 nom=validated_data['entreprise_nom'],
-                logo=validated_data.get('logo', None), # RÉCUPÉRATION DU LOGO
-                devise=validated_data.get('devise', 'EUR')
+                logo=validated_data.get('logo', None),
+                devise=validated_data.get('devise', 'CFA')
             )
-            
-            # 2. Création de l'Utilisateur Admin
             user = User.objects.create_user(
                 username=validated_data['username'],
                 email=validated_data['email'],
@@ -63,101 +53,107 @@ class EntrepriseRegistrationSerializer(serializers.Serializer):
             return user
 
     def to_representation(self, instance):
-        return UserSerializer(instance).data
+        return UserSerializer(instance, context=self.context).data
 
 
-# --- 3. SÉRIALIZERS DE GESTION ---
+# --- 2. SÉRIALIZERS DE GESTION ---
 
-# 3. Serializer pour les Articles (Catalogue)
 class ArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Article
         fields = '__all__'
         read_only_fields = ('entreprise',) 
 
-# 4. Serializer pour les Clients
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
         fields = '__all__'
         read_only_fields = ('entreprise', 'solde_credit')
 
-# 5. Serializer pour les Dépenses
 class DepenseSerializer(serializers.ModelSerializer):
     declaree_par_nom = serializers.CharField(source='declaree_par.username', read_only=True)
 
     class Meta:
         model = Depense
-        # On liste explicitement les champs pour être certain
         fields = ('id', 'motif', 'montant', 'categorie', 'date_depense', 'declaree_par_nom', 'statut_validation')
         read_only_fields = ('entreprise', 'declaree_par', 'statut_validation')
-        
-# --- 6. SÉRIALIZERS DE VENTES (Logique Imbriquée) ---
 
-# 6. Serializer pour les Lignes de Vente (détail du ticket)
+
+# --- 3. SÉRIALIZERS DE VENTES ---
+
 class LigneVenteSerializer(serializers.ModelSerializer):
     article_nom = serializers.CharField(source='article.nom', read_only=True)
     
     class Meta:
         model = LigneVente
         fields = ('id', 'article', 'article_nom', 'quantite', 'prix_unitaire', 'remise_pct', 'sous_total')
-        extra_kwargs = {
-            'prix_unitaire': {'read_only': True}, 
-            'sous_total': {'read_only': True}     
-        }
+        read_only_fields = ('prix_unitaire', 'sous_total')
 
 
-# 7. Serializer pour la Vente (avec imbrication des lignes)
 class VenteSerializer(serializers.ModelSerializer):
-    lignes = LigneVenteSerializer(many=True, write_only=True) 
-    lignes_detail = LigneVenteSerializer(source='lignes', read_only=True, many=True) 
+    lignes = LigneVenteSerializer(many=True) # Retrait de write_only pour faciliter certains retours
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    vendeur_nom = serializers.CharField(source='vendeur.username', read_only=True)
 
     class Meta:
         model = Vente
-        fields = ('id', 'client', 'client_nom', 'nom_client_libre', 'date_vente', 'total_ttc', 'mode_paiement', 'statut', 'lignes', 'lignes_detail', 'numero_sequentiel')
-        read_only_fields = ('total_ttc', 'vendeur', 'entreprise')
+        fields = (
+            'id', 'client', 'client_nom', 'nom_client_libre', 'date_vente', 
+            'total_ttc', 'mode_paiement', 'statut', 'lignes', 'numero_sequentiel', 'vendeur_nom'
+        )
+        read_only_fields = ('total_ttc', 'vendeur', 'entreprise', 'numero_sequentiel', 'statut')
 
     @transaction.atomic
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
-        vente = Vente.objects.create(**validated_data)
-        total_vente_ttc = Decimal('0.0') # Initialisé en Decimal
+        request = self.context.get('request')
+        user = request.user
+        
+        # Création de la vente initiale
+        vente = Vente.objects.create(
+            vendeur=user,
+            entreprise=user.entreprise,
+            **validated_data
+        )
+        
+        total_vente_ttc = Decimal('0.0')
 
         for ligne_data in lignes_data:
             article = ligne_data['article']
-            quantite = ligne_data['quantite']
+            quantite = Decimal(str(ligne_data['quantite']))
             
-            if article.stock_actuel < quantite:
-                transaction.set_rollback(True)
+            # 1. Vérification du stock (on utilise .stock comme dans les vues)
+            if article.stock < quantite:
                 raise serializers.ValidationError(
-                    f"Stock insuffisant pour l'article {article.nom}. Disponible : {article.stock_actuel}"
+                    f"Stock insuffisant pour {article.nom}. Disponible : {article.stock}"
                 )
 
-            # --- CORRECTION DU CALCUL ICI ---
+            # 2. Calculs financiers
             prix_unitaire = article.prix_vente
-            remise_pct = ligne_data.get('remise_pct', 0)
+            remise_pct = Decimal(str(ligne_data.get('remise_pct', 0)))
             
-            # On convertit tout en Decimal pour éviter le TypeError
-            remise_dec = Decimal(str(remise_pct)) / Decimal('100.0')
-            facteur_multiplicateur = Decimal('1.0') - remise_dec
-            
-            prix_applique_ttc = prix_unitaire * facteur_multiplicateur
-            sous_total = prix_applique_ttc * Decimal(str(quantite))
-            # -------------------------------
+            reduction = (prix_unitaire * remise_pct) / Decimal('100.0')
+            prix_final_unitaire = prix_unitaire - reduction
+            sous_total = prix_final_unitaire * quantite
 
-            total_vente_ttc += sous_total
-
-            article.stock_actuel -= quantite
+            # 3. Mise à jour du stock
+            article.stock -= quantite
             article.save()
 
+            # 4. Création de la ligne avec archivage du prix d'achat actuel pour le reporting
             LigneVente.objects.create(
                 vente=vente,
+                article=article,
+                quantite=quantite,
                 prix_unitaire=prix_unitaire,
+                remise_pct=remise_pct,
                 sous_total=sous_total,
-                **ligne_data
+                # Optionnel mais recommandé : prix_achat_archive=article.prix_achat
             )
+            
+            total_vente_ttc += sous_total
         
+        # Mise à jour finale du total de la vente
         vente.total_ttc = total_vente_ttc
         vente.save()
 
