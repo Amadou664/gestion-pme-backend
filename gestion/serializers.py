@@ -1,3 +1,4 @@
+# gestion/serializers.py
 from rest_framework import serializers
 from django.db import transaction
 from .models import User, Entreprise, Article, Vente, LigneVente, Depense, Client 
@@ -90,7 +91,7 @@ class LigneVenteSerializer(serializers.ModelSerializer):
 
 
 class VenteSerializer(serializers.ModelSerializer):
-    lignes = LigneVenteSerializer(many=True) 
+    lignes = LigneVenteSerializer(many=True) # Retrait de write_only pour faciliter certains retours
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     vendeur_nom = serializers.CharField(source='vendeur.username', read_only=True)
 
@@ -119,13 +120,12 @@ class VenteSerializer(serializers.ModelSerializer):
 
         for ligne_data in lignes_data:
             article = ligne_data['article']
-            # CORRECTION : Utilisation de int car votre modèle définit stock_actuel comme IntegerField
-            quantite_demandee = int(ligne_data['quantite'])
+            quantite = Decimal(str(ligne_data['quantite']))
             
-            # 1. Vérification du stock (CORRECTION : nom du champ stock_actuel)
-            if article.stock_actuel < quantite_demandee:
+            # 1. Vérification du stock (on utilise .stock comme dans les vues)
+            if article.stock < quantite:
                 raise serializers.ValidationError(
-                    f"Stock insuffisant pour {article.nom}. Disponible : {article.stock_actuel}"
+                    f"Stock insuffisant pour {article.nom}. Disponible : {article.stock}"
                 )
 
             # 2. Calculs financiers
@@ -134,20 +134,21 @@ class VenteSerializer(serializers.ModelSerializer):
             
             reduction = (prix_unitaire * remise_pct) / Decimal('100.0')
             prix_final_unitaire = prix_unitaire - reduction
-            sous_total = prix_final_unitaire * Decimal(str(quantite_demandee))
+            sous_total = prix_final_unitaire * quantite
 
-            # 3. Mise à jour du stock (CORRECTION : nom du champ stock_actuel)
-            article.stock_actuel -= quantite_demandee
+            # 3. Mise à jour du stock
+            article.stock -= quantite
             article.save()
 
-            # 4. Création de la ligne
+            # 4. Création de la ligne avec archivage du prix d'achat actuel pour le reporting
             LigneVente.objects.create(
                 vente=vente,
                 article=article,
-                quantite=quantite_demandee,
+                quantite=quantite,
                 prix_unitaire=prix_unitaire,
                 remise_pct=remise_pct,
-                sous_total=sous_total
+                sous_total=sous_total,
+                # Optionnel mais recommandé : prix_achat_archive=article.prix_achat
             )
             
             total_vente_ttc += sous_total
