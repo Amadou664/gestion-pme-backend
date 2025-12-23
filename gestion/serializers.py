@@ -61,7 +61,7 @@ class EntrepriseRegistrationSerializer(serializers.Serializer):
 class ArticleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Article
-        fields = '__all__'
+        fields = ['id', 'nom', 'code', 'prix_achat', 'prix_vente', 'stock', 'seuil_alerte']
         read_only_fields = ('entreprise',) 
 
 class ClientSerializer(serializers.ModelSerializer):
