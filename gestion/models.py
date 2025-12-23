@@ -70,7 +70,7 @@ class Article(models.Model):
     prix_vente = models.DecimalField(max_digits=10, decimal_places=2)
     stock_actuel = models.IntegerField(default=0)
     archived = models.BooleanField(default=False)
-    stock_actuel = models.IntegerField(default=0)
+    stock = models.IntegerField(default=0)
     seuil_alerte = models.IntegerField(default=5)  # Ajout de ce champ
 
     @property
