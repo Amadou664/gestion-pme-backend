@@ -217,14 +217,19 @@ class VenteViewSet(viewsets.ModelViewSet):
         return FileResponse(buffer, as_attachment=False, filename=f'Facture_{vente.id}.pdf')
     
 class DepenseViewSet(viewsets.ModelViewSet):
-    permission_classes = [permissions.IsAuthenticated, IsOwnerOfEntreprise]
     serializer_class = DepenseSerializer
+    permission_classes = [IsAuthenticated, IsOwnerOfEntreprise]
 
     def get_queryset(self):
-        return Depense.objects.filter(entreprise=self.request.user.entreprise).order_by('-date_depense')
-    
-    #def perform_create(self, serializer):
-        #serializer.save(entreprise=self.request.user.entreprise)
+        # On ne voit que les dépenses de son entreprise
+        return Depense.objects.filter(entreprise=self.request.user.entreprise)
+
+    def perform_create(self, serializer):
+        # ACTION CRUCIALE : On injecte l'entreprise et l'utilisateur ici
+        serializer.save(
+            entreprise=self.request.user.entreprise,
+            declaree_par=self.request.user
+        )
 
 # --- REPORTING (CORRIGÉ POUR L'ACTUALISATION) ---
 
