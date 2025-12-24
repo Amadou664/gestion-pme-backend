@@ -107,13 +107,19 @@ class VenteSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')
         request = self.context.get('request')
-        user = request.user
         
-        # Création de la vente initiale
+        # Sécurité : on extrait tout ce qui est passé manuellement par perform_create
+        # pour éviter les doublons dans le **validated_data
+        vendeur = validated_data.pop('vendeur', request.user)
+        entreprise = validated_data.pop('entreprise', None)
+        statut = validated_data.pop('statut', 'payee')
+
+        # Création de la vente avec les variables extraites
         vente = Vente.objects.create(
-            vendeur=user,
-            entreprise=user.entreprise,
-            **validated_data
+            vendeur=vendeur,
+            entreprise=entreprise,
+            statut=statut,
+            **validated_data  # Ne contient plus entreprise, vendeur ou statut
         )
         
         total_vente_ttc = Decimal('0.0')

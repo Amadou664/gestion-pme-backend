@@ -115,13 +115,12 @@ class VenteViewSet(viewsets.ModelViewSet):
         return queryset
     
     def perform_create(self, serializer):
-        # On retire la boucle "for article.stock -= ..." d'ici 
-        # car elle est déjà dans serializers.py
+    # On passe les objets via save(), le serializer s'occupera du reste
         serializer.save(
             entreprise=self.request.user.entreprise, 
             vendeur=self.request.user,
-            statut='payee',
-            nom_client_libre=self.request.data.get('nom_client_libre')
+            statut='payee'
+            # Suppression de nom_client_libre ici car il est déjà dans validated_data
         )
 
     @action(detail=True, methods=['post'])
