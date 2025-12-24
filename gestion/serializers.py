@@ -75,7 +75,7 @@ class DepenseSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Depense
-        fields = ('id', 'motif', 'montant', 'categorie', 'date_depense', 'declaree_par_nom', 'statut_validation')
+        fields = ('id', 'motif', 'montant', 'fournisseur','categorie', 'date_depense', 'declaree_par_nom', 'statut_validation')
         read_only_fields = ('entreprise', 'declaree_par', 'statut_validation')
 
 

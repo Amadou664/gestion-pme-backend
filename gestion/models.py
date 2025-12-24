@@ -145,10 +145,13 @@ class Depense(models.Model):
     declaree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     categorie = models.CharField(max_length=50) 
     montant = models.DecimalField(max_digits=10, decimal_places=2)
+    # AJOUT DU CHAMP FOURNISSEUR ICI
+    fournisseur = models.CharField(max_length=255, blank=True, null=True, default="Inconnu")
     justificatif_url = models.URLField(blank=True, null=True)
     motif = models.TextField(blank=True)
     statut_validation = models.CharField(max_length=20, choices=STATUTS, default='en_attente')
     date_depense = models.DateField()
     
     def __str__(self):
-        return f"Dépense {self.id} ({self.montant})"
+        # Amélioration du __str__ pour voir le fournisseur dans l'admin
+        return f"Dépense {self.id} - {self.fournisseur} ({self.montant})"
