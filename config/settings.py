@@ -146,6 +146,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # À la fin du fichier, autorise tout le monde pour le moment (mode dev)
 CORS_ALLOWED_ORIGINS = [
     "https://gestion-pme.netlify.app",
+    "https://ma-gestion-pme.web.app",
     "http://localhost:3000",
     "http://127.0.0.1:8000",
 ]
