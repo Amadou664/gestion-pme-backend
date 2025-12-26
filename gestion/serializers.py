@@ -3,6 +3,7 @@ from rest_framework import serializers
 from django.db import transaction
 from .models import User, Entreprise, Article, Vente, LigneVente, Depense, Client 
 from decimal import Decimal
+from django.db.models import Sum
 
 # --- 1. SÉRIALIZERS D'AUTHENTIFICATION ---
 
@@ -59,10 +60,23 @@ class EntrepriseRegistrationSerializer(serializers.Serializer):
 # --- 2. SÉRIALIZERS DE GESTION ---
 
 class ArticleSerializer(serializers.ModelSerializer):
+    # Ajout du champ calculé pour le nombre total vendu
+    total_vendus = serializers.SerializerMethodField()
+
     class Meta:
         model = Article
-        fields = ['id', 'nom', 'code', 'prix_achat', 'prix_vente', 'stock', 'seuil_alerte']
+        fields = ['id', 'nom', 'code', 'prix_achat', 'prix_vente', 'stock', 'seuil_alerte', 'total_vendus']
         read_only_fields = ('entreprise',) 
+
+    def get_total_vendus(self, obj):
+        # On calcule la somme des quantités dans LigneVente pour cet article
+        # On filtre pour exclure les ventes annulées
+        resultat = LigneVente.objects.filter(
+            article=obj, 
+            vente__statut='payee' # On ne compte que les ventes payées
+        ).aggregate(total=Sum('quantite'))['total']
+        
+        return resultat or 0 # Retourne 0 si aucune vente n'a été faite
 
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
