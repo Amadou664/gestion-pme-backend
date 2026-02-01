@@ -9,67 +9,61 @@ https://docs.djangoproject.com/en/6.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
+
 import dj_database_url
 from pathlib import Path
 import os
 
-# Configuration DRF
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# --- SÉCURITÉ ---
+# On récupère la clé depuis Render, sinon on utilise une clé par défaut pour le local
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-9vp*nc(e=nk^g4(jakyrz1_uephzyxfmtsm3w(jsb+0ce11gwv')
+
+DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+
+ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
+CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']
+
+# --- CONFIGURATION DRF (API) ---
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        # Utiliser l'authentification par Token pour les appels API
         'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        # La plupart des ressources nécessitent une connexion
         'rest_framework.permissions.IsAuthenticated',
     ]
 }
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
-
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9vp*nc(e=nk^g4(jakyrz1_uephzyxfmtsm3w(jsb+0ce11gwv'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
-
-
-# Application definition
-
+# --- APPLICATIONS ---
 INSTALLED_APPS = [
+    'cloudinary_storage',         # Doit être avant staticfiles
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # --- Ajouts ---
-    'rest_framework',                  # Pour l'API
-    'rest_framework.authtoken',        # <-- AJOUT ESSENTIEL POUR LES JETONS (TOKEN)
-    'corsheaders',                     # Pour autoriser l'app mobile à parler au serveur
-    'gestion',                         # Ton application
+    
+    'cloudinary',                 # <--- AJOUTÉ : Indispensable pour Cloudinary
+    'rest_framework',
+    'rest_framework.authtoken',
+    'corsheaders',
+    'gestion',                    # Ton application
 ]
 
+# --- MIDDLEWARES ---
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # <--- AJOUTÉ : Pour les fichiers statiques sur Render
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    # --- AUTHENTIFICATION D'ABORD ---
     'django.contrib.auth.middleware.AuthenticationMiddleware', 
     'django.contrib.messages.middleware.MessageMiddleware',
-    # --- VOTRE MIDDLEWARE ENSUITE ---
     'gestion.middleware.TokenURLMiddleware', 
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -93,67 +87,53 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'config.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-
+# --- BASE DE DONNÉES ---
 DATABASES = {
     'default': dj_database_url.config(
-        # Cette URL est utilisée uniquement si DATABASE_URL n'est pas trouvée (donc sur ton PC)
         default='postgresql://postgres:Mims2408@localhost:5432/gestion_pme',
         conn_max_age=600
     )
 }
 
-
-# Password validation
-# https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
+# --- AUTHENTIFICATION ---
+AUTH_USER_MODEL = 'gestion.User'
 
 AUTH_PASSWORD_VALIDATORS = [
-    {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-    },
-    {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
-    },
+    {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'},
+    {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/6.0/topics/i18n/
-
-LANGUAGE_CODE = 'en-us'
-
+# --- INTERNATIONALISATION ---
+LANGUAGE_CODE = 'fr-fr'
 TIME_ZONE = 'UTC'
-
 USE_I18N = True
-
 USE_TZ = True
 
-
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/6.0/howto/static-files/
-
+# --- FICHIERS STATIQUES ET MÉDIAS ---
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# À la fin du fichier, autorise tout le monde pour le moment (mode dev)
+# Configuration pour WhiteNoise (compression des fichiers statiques)
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# --- CLOUDINARY (Stockage des logos) ---
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dfwgxjvyp'),
+    'API_KEY': os.environ.get('CLOUDINARY_API_KEY', '828715766475768'),
+    'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'IrnD-zoD_NGRWuJIZF_WRHiizKU'),
+}
+
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+
+# --- CORS ---
 CORS_ALLOWED_ORIGINS = [
     "https://gestion-pme.netlify.app",
     "https://ma-gestion-pme.web.app",
     "http://localhost:3000",
     "http://127.0.0.1:8000",
 ]
-
-# Spécifie que le modèle d'utilisateur à utiliser est celui de l'application 'gestion'
-AUTH_USER_MODEL = 'gestion.User'
-
-# settings.py
-ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
-CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']

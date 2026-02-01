@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate
 
 # Rest Framework
 from rest_framework import status, viewsets, generics, permissions
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.authtoken.models import Token
@@ -19,13 +19,14 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 
-from .models import User, Article, Client, Vente, Depense
+from .models import User, Article, Client, Vente, Depense, Commande
 from .serializers import (
     EntrepriseRegistrationSerializer, 
     ArticleSerializer, 
     ClientSerializer, 
     VenteSerializer,
-    DepenseSerializer
+    DepenseSerializer,
+    CommandeSerializer
 )
 
 # --- PERMISSIONS ---
@@ -95,6 +96,21 @@ class ClientViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         serializer.save(entreprise=self.request.user.entreprise)
+
+class CommandeViewSet(viewsets.ModelViewSet):
+    serializer_class = CommandeSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # L'utilisateur ne voit que les commandes de son entreprise
+        return Commande.objects.filter(entreprise=self.request.user.entreprise)
+
+    def perform_create(self, serializer):
+        # On injecte l'entreprise et le vendeur automatiquement au moment de l'enregistrement
+        serializer.save(
+            entreprise=self.request.user.entreprise,
+            vendeur=self.request.user
+        )
 
 class VenteViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOfEntreprise]
@@ -242,38 +258,88 @@ class ReportingViewSet(viewsets.ViewSet):
         end_date_str = request.query_params.get('end_date')
         
         # Filtres de base
-        # On ajoute : exclusion des ventes annulées
         vente_filtres = Q(entreprise=ent) & ~Q(statut='annulee') 
         depense_filtres = Q(entreprise=ent) 
+        commande_filtres = Q(entreprise=ent) # Nouveau filtre pour les acomptes
 
         try:
             if start_date_str:
-                # Filtrage précis sur la DATE uniquement
                 vente_filtres &= Q(date_vente__date__gte=start_date_str)
                 depense_filtres &= Q(date_depense__gte=start_date_str)
+                # On filtre les acomptes par date de création de la commande
+                commande_filtres &= Q(date_commande__date__gte=start_date_str)
             if end_date_str:
                 vente_filtres &= Q(date_vente__date__lte=end_date_str)
                 depense_filtres &= Q(date_depense__lte=end_date_str)
+                commande_filtres &= Q(date_commande__date__lte=end_date_str)
         except ValueError:
             return Response({"erreur": "Format date invalide"}, status=400)
         
-        # Calcul du CA et du coût des marchandises vendues (CMV)
+        # 1. Calcul CA et CMV (Ventes directes)
         vente_data = Vente.objects.filter(vente_filtres).aggregate(
             total_ca=Sum('total_ttc', output_field=DecimalField()),
             total_cmv=Sum(F('lignes__quantite') * F('lignes__article__prix_achat'), output_field=DecimalField())
         )
         
-        total_ca = vente_data['total_ca'] or 0
-        total_cmv = vente_data['total_cmv'] or 0
+        # 2. Calcul des Dépenses
         total_depense = Depense.objects.filter(depense_filtres).aggregate(s=Sum('montant'))['s'] or 0
         
+        # 3. NOUVEAU : Calcul des Acomptes (Commandes de meubles)
+        total_acomptes = Commande.objects.filter(commande_filtres).aggregate(s=Sum('acompte_verse'))['s'] or 0
+
+        # --- LOGIQUE FINANCIÈRE ---
+        total_ca = vente_data['total_ca'] or 0
+        total_cmv = vente_data['total_cmv'] or 0
         marge_brute = total_ca - total_cmv
-        benefice_net = marge_brute - total_depense
+        
+        # Le bénéfice net inclut maintenant les acomptes (argent encaissé) 
+        # moins les dépenses.
+        benefice_net = (marge_brute + total_acomptes) - total_depense
 
         return Response({
             'chiffre_affaires': float(total_ca),
             'marge_brute': float(marge_brute),
             'total_depenses': float(total_depense),
+            'total_acomptes': float(total_acomptes), # <--- Envoyé à Flutter
             'benefice_net': float(benefice_net),
             'devise': ent.devise
         })
+    
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def update_avatar(request):
+    """
+    Met à jour le logo de l'entreprise de l'utilisateur connecté.
+    """
+    user = request.user
+    if not user.entreprise:
+        return Response({"error": "Utilisateur sans entreprise"}, status=400)
+
+    logo = request.FILES.get('logo')
+    if logo:
+        user.entreprise.logo = logo
+        user.entreprise.save()
+        # On construit l'URL complète pour le retour à Flutter
+        logo_url = request.build_absolute_uri(user.entreprise.logo.url)
+        return Response({"message": "Logo mis à jour", "logo_url": logo_url})
+    
+    return Response({"error": "Aucun fichier fourni"}, status=400)
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def update_business_name(request):
+    """
+    Modifie le nom de l'entreprise.
+    """
+    user = request.user
+    nouveau_nom = request.data.get('nom')
+
+    if not nouveau_nom:
+        return Response({"error": "Le nom est requis"}, status=400)
+
+    if user.entreprise:
+        user.entreprise.nom = nouveau_nom
+        user.entreprise.save()
+        return Response({"message": "Nom de l'entreprise mis à jour", "nom": nouveau_nom})
+    
+    return Response({"error": "Entreprise introuvable"}, status=404)

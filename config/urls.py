@@ -21,16 +21,21 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
-from gestion.views import CustomAuthToken, RegisterEntrepriseView
+# Importe tout ce dont tu as besoin depuis gestion.views
+from gestion import views 
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     
-    # Routes d'authentification
-    path('api/auth/login/', CustomAuthToken.as_view(), name='login'),
-    path('api/auth/register/', RegisterEntrepriseView.as_view(), name='register_entreprise'),
+    # Routes d'authentification (via l'objet views)
+    path('api/auth/login/', views.CustomAuthToken.as_view(), name='login'),
+    path('api/auth/register/', views.RegisterEntrepriseView.as_view(), name='register_entreprise'),
     
-    # Inclusion des routes de l'application gestion (Articles, Ventes, etc.)
+    # Nouvelles routes pour le profil
+    path('api/auth/update-avatar/', views.update_avatar, name='update_avatar'),
+    path('api/auth/update-business-name/', views.update_business_name, name='update_name'),
+    
+    # Inclusion des autres routes (gestion/urls.py)
     path('api/', include('gestion.urls')),
 ]
 

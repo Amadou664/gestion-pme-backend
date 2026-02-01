@@ -1,7 +1,7 @@
 # gestion/serializers.py
 from rest_framework import serializers
 from django.db import transaction
-from .models import User, Entreprise, Article, Vente, LigneVente, Depense, Client 
+from .models import User, Entreprise, Article, Vente, LigneVente, Depense, Client, Commande
 from decimal import Decimal
 from django.db.models import Sum
 
@@ -56,6 +56,15 @@ class EntrepriseRegistrationSerializer(serializers.Serializer):
     def to_representation(self, instance):
         return UserSerializer(instance, context=self.context).data
 
+# Commande 
+
+class CommandeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Commande
+        # On inclut tous les champs, mais on met 'entreprise' en lecture seule
+        # car on va l'injecter automatiquement via la vue.
+        fields = '__all__'
+        read_only_fields = ['entreprise', 'vendeur']
 
 # --- 2. SÉRIALIZERS DE GESTION ---
 

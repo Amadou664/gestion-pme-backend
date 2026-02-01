@@ -155,3 +155,45 @@ class Depense(models.Model):
     def __str__(self):
         # Amélioration du __str__ pour voir le fournisseur dans l'admin
         return f"Dépense {self.id} - {self.fournisseur} ({self.montant})"
+          
+# 8. Commandes Personnalisées (Meubles sur mesure)
+class Commande(models.Model):
+    STATUTS_COMMANDE = [
+        ('en_attente', 'En attente'),
+        ('en_cours', 'En fabrication'),
+        ('pret', 'Prêt / Terminé'),
+        ('livre', 'Livré'),
+        ('annule', 'Annulé'),
+    ]
+
+    entreprise = models.ForeignKey(Entreprise, on_delete=models.CASCADE)
+    vendeur = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    
+    # Infos Client
+    nom_client = models.CharField(max_length=150)
+    telephone_client = models.CharField(max_length=20, blank=True)
+    ville_client = models.CharField(max_length=100, blank=True)
+    
+    # Spécifications Meuble
+    bois = models.CharField(max_length=100, blank=True, help_text="Ex: Chêne, Rouge, etc.")
+    tissu = models.CharField(max_length=100, blank=True, help_text="Ex: Velours bleu, Cuir noir")
+    description = models.TextField(blank=True, help_text="Détails supplémentaires sur le modèle")
+    
+    # Dates et Finances
+    date_commande = models.DateTimeField(auto_now_add=True)
+    date_livraison_prevue = models.DateField()
+    
+    total_commande = models.DecimalField(max_digits=10, decimal_places=2)
+    acompte_verse = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    
+    statut = models.CharField(max_length=20, choices=STATUTS_COMMANDE, default='en_attente')
+
+    class Meta:
+        ordering = ['-date_commande']
+
+    def __str__(self):
+        return f"Commande {self.nom_client} - {self.total_commande} CFA"
+
+    @property
+    def reste_a_payer(self):
+        return self.total_commande - self.acompte_verse
