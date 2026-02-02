@@ -119,6 +119,9 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # Configuration pour WhiteNoise (compression des fichiers statiques)
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 # --- CLOUDINARY (Stockage des logos) ---
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dfwgxjvyp'),
