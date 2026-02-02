@@ -86,6 +86,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+APPEND_SLASH = True
 
 # --- BASE DE DONNÉES ---
 DATABASES = {
@@ -118,9 +119,6 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # Configuration pour WhiteNoise (compression des fichiers statiques)
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
 # --- CLOUDINARY (Stockage des logos) ---
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.environ.get('CLOUDINARY_CLOUD_NAME', 'dfwgxjvyp'),
@@ -136,4 +134,17 @@ CORS_ALLOWED_ORIGINS = [
     "https://ma-gestion-pme.web.app",
     "http://localhost:3000",
     "http://127.0.0.1:8000",
+]
+
+# Ajoute ceci pour autoriser Flutter local (Chrome) quel que soit le port
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # En mode DEBUG, on accepte tout (pratique pour Flutter Web local)
+
+# TRÈS IMPORTANT : Autorise les headers personnalisés
+CORS_ALLOW_HEADERS = [
+    "accept",
+    "authorization",
+    "content-type",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
 ]

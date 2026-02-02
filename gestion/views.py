@@ -1,6 +1,7 @@
 import io
 from datetime import datetime
 from django.db.models import Sum, F, DecimalField, Q
+from django.db import transaction
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate
@@ -99,7 +100,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
 class CommandeViewSet(viewsets.ModelViewSet):
     serializer_class = CommandeSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, IsOwnerOfEntreprise]
 
     def get_queryset(self):
         # L'utilisateur ne voit que les commandes de son entreprise
@@ -111,6 +112,54 @@ class CommandeViewSet(viewsets.ModelViewSet):
             entreprise=self.request.user.entreprise,
             vendeur=self.request.user
         )
+
+    @action(detail=True, methods=['post'], url_path='solder')
+    @transaction.atomic
+    def solder(self, request, pk=None):
+        print(f"\n--- TENTATIVE DE SOLDER LA COMMANDE ID: {pk} ---")
+        
+        # 1. On cherche la commande sans le filtre get_object pour voir si elle existe vraiment
+        commande = Commande.objects.filter(pk=pk).first()
+        
+        if not commande:
+            print(f"❌ ERREUR: La commande {pk} n'existe pas en base de données.")
+            return Response({'error': 'Commande introuvable.'}, status=404)
+
+        # 2. Vérification de l'entreprise (Le problème vient souvent d'ici)
+        if commande.entreprise != request.user.entreprise:
+            print(f"❌ ERREUR PERMISSION: Cette commande appartient à l'entreprise ID {commande.id}")
+            print(f"   L'utilisateur connecté appartient à l'entreprise ID {request.user.entreprise.id if request.user.entreprise else 'NULL'}")
+            return Response({'error': 'Accès interdit à cette entreprise.'}, status=403)
+
+        # 3. Vérification du statut
+        if commande.statut == 'livree':
+            return Response({'error': 'Cette commande est déjà soldée.'}, status=400)
+
+        try:
+            # 4. Création de la Vente (Vérifie que ton modèle Vente a bien ces champs)
+            vente = Vente.objects.create(
+                entreprise=commande.entreprise,
+                vendeur=request.user,
+                nom_client_libre=commande.nom_client,
+                telephone_client_libre=commande.telephone_client,
+                total_ttc=commande.total_commande,
+                mode_paiement='especes',
+                statut='payee'
+            )
+            
+            # 5. Mise à jour de la commande
+            commande.statut = 'livree'
+            commande.save()
+            
+            print(f"✅ SUCCÈS: Commande {pk} soldée, Vente {vente.id} créée.")
+            return Response({
+                'status': 'success',
+                'message': f"Commande soldée. Vente n°{vente.id} générée."
+            })
+
+        except Exception as e:
+            print(f"🔥 ERREUR CRITIQUE: {str(e)}")
+            return Response({'error': str(e)}, status=500)
 
 class VenteViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated, IsOwnerOfEntreprise]
@@ -161,6 +210,7 @@ class VenteViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['get'], 
             authentication_classes=[SessionAuthentication, TokenAuthentication],
             permission_classes=[IsAuthenticated])
+    
     def facture_pdf(self, request, pk=None):
         vente = self.get_object() 
         buffer = io.BytesIO()
@@ -178,6 +228,15 @@ class VenteViewSet(viewsets.ModelViewSet):
         else:
             nom_client_final = "Client Passant"
 
+        # --- LOGIQUE D'AFFICHAGE DU TÉLÉPHONE (AJOUT) ---
+        # On suppose que vous avez un champ 'telephone_client_libre' sur votre modèle Vente
+        # ou que vous le récupérez via l'objet client
+        telephone_final = ""
+        if hasattr(vente, 'telephone_client_libre') and vente.telephone_client_libre:
+            telephone_final = vente.telephone_client_libre
+        elif vente.client and hasattr(vente.client, 'telephone'):
+            telephone_final = vente.client.telephone
+
         # --- EN-TÊTE ---
         p.setFont("Helvetica-Bold", 16)
         p.drawString(50, height - 50, f"{vente.entreprise.nom.upper()}")
@@ -186,9 +245,14 @@ class VenteViewSet(viewsets.ModelViewSet):
         p.drawString(50, height - 65, f"Date: {vente.date_vente.strftime('%d/%m/%Y %H:%M')}")
         p.drawString(50, height - 80, f"Facture N°: #{str(vente.numero_sequentiel).zfill(4)}")
         
-        # --- CLIENT ---
+        # --- SECTION CLIENT MISE À JOUR ---
         p.setFont("Helvetica-Bold", 11)
-        p.drawString(350, height - 65, f"CLIENT: {nom_client_final}") # Utilisation du nom dynamique
+        p.drawString(350, height - 65, f"CLIENT: {nom_client_final}") 
+        
+        # Affichage du numéro si disponible
+        if telephone_final:
+            p.setFont("Helvetica", 10)
+            p.drawString(350, height - 80, f"Tél: {telephone_final}")
         
         p.line(50, height - 100, width - 50, height - 100)
 
@@ -260,7 +324,7 @@ class ReportingViewSet(viewsets.ViewSet):
         # Filtres de base
         vente_filtres = Q(entreprise=ent) & ~Q(statut='annulee') 
         depense_filtres = Q(entreprise=ent) 
-        commande_filtres = Q(entreprise=ent) # Nouveau filtre pour les acomptes
+        commande_filtres = Q(entreprise=ent) & ~Q(statut='livree') # Nouveau filtre pour les acomptes
 
         try:
             if start_date_str:
@@ -320,12 +384,13 @@ def update_avatar(request):
         user.entreprise.logo = logo
         user.entreprise.save()
         # On construit l'URL complète pour le retour à Flutter
-        logo_url = request.build_absolute_uri(user.entreprise.logo.url)
+        logo_url = user.entreprise.logo.url
+
         return Response({"message": "Logo mis à jour", "logo_url": logo_url})
     
     return Response({"error": "Aucun fichier fourni"}, status=400)
 
-@api_view(['PATCH'])
+@api_view(['POST', 'PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def update_business_name(request):
     """

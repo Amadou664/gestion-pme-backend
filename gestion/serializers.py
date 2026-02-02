@@ -18,9 +18,6 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_entreprise_logo(self, obj):
         if obj.entreprise and obj.entreprise.logo:
-            request = self.context.get('request')
-            if request is not None:
-                return request.build_absolute_uri(obj.entreprise.logo.url)
             return obj.entreprise.logo.url
         return None
 
@@ -90,7 +87,7 @@ class ArticleSerializer(serializers.ModelSerializer):
 class ClientSerializer(serializers.ModelSerializer):
     class Meta:
         model = Client
-        fields = '__all__'
+        fields = ['id', 'nom', 'telephone', 'email', 'adresse', 'solde_credit']
         read_only_fields = ('entreprise', 'solde_credit')
 
 class DepenseSerializer(serializers.ModelSerializer):
@@ -116,12 +113,13 @@ class LigneVenteSerializer(serializers.ModelSerializer):
 class VenteSerializer(serializers.ModelSerializer):
     lignes = LigneVenteSerializer(many=True) # Retrait de write_only pour faciliter certains retours
     client_nom = serializers.CharField(source='client.nom', read_only=True)
+    client_telephone = serializers.CharField(source='client.telephone', read_only=True)
     vendeur_nom = serializers.CharField(source='vendeur.username', read_only=True)
 
     class Meta:
         model = Vente
         fields = (
-            'id', 'client', 'client_nom', 'nom_client_libre', 'date_vente', 
+            'id', 'client', 'client_nom', 'nom_client_libre', 'client_telephone','telephone_client_libre', 'date_vente', 
             'total_ttc', 'mode_paiement', 'statut', 'lignes', 'numero_sequentiel', 'vendeur_nom'
         )
         read_only_fields = ('total_ttc', 'vendeur', 'entreprise', 'numero_sequentiel', 'statut')

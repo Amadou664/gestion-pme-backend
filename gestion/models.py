@@ -105,6 +105,7 @@ class Vente(models.Model):
     nom_client_libre = models.CharField(max_length=255, null=True, blank=True)
     date_vente = models.DateTimeField(auto_now_add=True)
     total_ttc = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    telephone_client_libre = models.CharField(max_length=20, null=True, blank=True)
     mode_paiement = models.CharField(max_length=20, choices=[(c, c.capitalize()) for c, _ in [('especes', 'Espèces'), ('carte', 'Carte'), ('mobile_money', 'Mobile Money')]])
     statut = models.CharField(max_length=20, default='payee', choices=[(s, s.capitalize()) for s in ['payee', 'annulee', 'credit']])
     numero_sequentiel = models.IntegerField(default=1) # Numéro propre à l'entreprise
@@ -159,6 +160,7 @@ class Depense(models.Model):
 # 8. Commandes Personnalisées (Meubles sur mesure)
 class Commande(models.Model):
     STATUTS_COMMANDE = [
+        ('devis', 'Devis'),
         ('en_attente', 'En attente'),
         ('en_cours', 'En fabrication'),
         ('pret', 'Prêt / Terminé'),
@@ -186,7 +188,7 @@ class Commande(models.Model):
     total_commande = models.DecimalField(max_digits=10, decimal_places=2)
     acompte_verse = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
-    statut = models.CharField(max_length=20, choices=STATUTS_COMMANDE, default='en_attente')
+    statut = models.CharField(max_length=20, choices=STATUTS_COMMANDE, default='devis')
 
     class Meta:
         ordering = ['-date_commande']
