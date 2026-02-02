@@ -386,7 +386,7 @@ def update_avatar(request):
         # On construit l'URL complète pour le retour à Flutter
         logo_url = user.entreprise.logo.url
 
-        return Response({"message": "Logo mis à jour", "logo_url": logo_url})
+        return Response({"message": "Logo mis à jour", "entreprise_logo": logo_url})
     
     return Response({"error": "Aucun fichier fourni"}, status=400)
 
