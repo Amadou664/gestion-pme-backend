@@ -17,7 +17,7 @@ from rest_framework.permissions import IsAuthenticated
 
 # ReportLab pour le PDF
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import mm, A4
 from reportlab.lib import colors
 
 from .models import User, Article, Client, Vente, Depense, Commande
@@ -212,82 +212,70 @@ class VenteViewSet(viewsets.ModelViewSet):
             permission_classes=[IsAuthenticated])
     
     def facture_pdf(self, request, pk=None):
-        vente = self.get_object() 
+        vente = self.get_object()
         buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        
-        # --- LOGIQUE D'AFFICHAGE DU NOM ---
-        # 1. On vérifie s'il y a un nom saisi manuellement
-        # 2. Sinon on prend le nom du client lié (base de données)
-        # 3. Sinon "Client Passant"
-        if vente.nom_client_libre:
-            nom_client_final = vente.nom_client_libre
-        elif vente.client:
-            nom_client_final = vente.client.nom
-        else:
-            nom_client_final = "Client Passant"
 
-        # --- LOGIQUE D'AFFICHAGE DU TÉLÉPHONE (AJOUT) ---
-        # On suppose que vous avez un champ 'telephone_client_libre' sur votre modèle Vente
-        # ou que vous le récupérez via l'objet client
-        telephone_final = ""
-        if hasattr(vente, 'telephone_client_libre') and vente.telephone_client_libre:
-            telephone_final = vente.telephone_client_libre
-        elif vente.client and hasattr(vente.client, 'telephone'):
-            telephone_final = vente.client.telephone
+        # --- 1. CONFIGURATION DU FORMAT TICKET ---
+        # Largeur standard 80mm. 
+        # Hauteur dynamique : 100mm de base + 15mm par article pour éviter de couper le papier trop tôt
+        width_ticket = 80 * mm
+        height_ticket = (120 + (vente.lignes.count() * 15)) * mm 
+        
+        # On crée le canvas avec cette taille personnalisée
+        p = canvas.Canvas(buffer, pagesize=(width_ticket, height_ticket))
+        
+        # --- LOGIQUE DE NOM & TEL (Gardée de ton code) ---
+        nom_client_final = vente.nom_client_libre or (vente.client.nom if vente.client else "Client Passant")
+        telephone_final = getattr(vente, 'telephone_client_libre', "") or (vente.client.telephone if vente.client else "")
 
-        # --- EN-TÊTE ---
-        p.setFont("Helvetica-Bold", 16)
-        p.drawString(50, height - 50, f"{vente.entreprise.nom.upper()}")
+        # --- EN-TÊTE (Centré pour le ticket) ---
+        p.setFont("Helvetica-Bold", 12)
+        p.drawCentredString(width_ticket / 2, height_ticket - 15 * mm, f"{vente.entreprise.nom.upper()}")
         
-        p.setFont("Helvetica", 10)
-        p.drawString(50, height - 65, f"Date: {vente.date_vente.strftime('%d/%m/%Y %H:%M')}")
-        p.drawString(50, height - 80, f"Facture N°: #{str(vente.numero_sequentiel).zfill(4)}")
+        p.setFont("Helvetica", 8)
+        p.drawCentredString(width_ticket / 2, height_ticket - 22 * mm, f"Date: {vente.date_vente.strftime('%d/%m/%Y %H:%M')}")
+        p.drawCentredString(width_ticket / 2, height_ticket - 27 * mm, f"Reçu N°: #{str(vente.numero_sequentiel).zfill(4)}")
         
-        # --- SECTION CLIENT MISE À JOUR ---
-        p.setFont("Helvetica-Bold", 11)
-        p.drawString(350, height - 65, f"CLIENT: {nom_client_final}") 
-        
-        # Affichage du numéro si disponible
+        # Infos Client
+        p.line(5 * mm, height_ticket - 32 * mm, width_ticket - 5 * mm, height_ticket - 32 * mm)
+        p.setFont("Helvetica-Bold", 9)
+        p.drawString(7 * mm, height_ticket - 38 * mm, f"CLIENT: {nom_client_final[:25]}")
         if telephone_final:
-            p.setFont("Helvetica", 10)
-            p.drawString(350, height - 80, f"Tél: {telephone_final}")
-        
-        p.line(50, height - 100, width - 50, height - 100)
+            p.setFont("Helvetica", 8)
+            p.drawString(7 * mm, height_ticket - 43 * mm, f"Tél: {telephone_final}")
 
-        # --- TABLEAU (Entêtes) ---
-        y = height - 130
-        p.setFont("Helvetica-Bold", 10)
-        p.drawString(50, y, "Désignation")
-        p.drawString(280, y, "P.U.")
-        p.drawString(380, y, "Qté")
-        p.drawString(480, y, "Total")
-        p.line(50, y - 5, width - 50, y - 5)
+        # --- TABLEAU (Entêtes plus serrées) ---
+        y = height_ticket - 52 * mm
+        p.line(5 * mm, y + 2 * mm, width_ticket - 5 * mm, y + 2 * mm)
+        p.setFont("Helvetica-Bold", 8)
+        p.drawString(7 * mm, y, "Désignation")
+        p.drawRightString(width_ticket - 7 * mm, y, "Total")
+        p.line(5 * mm, y - 2 * mm, width_ticket - 5 * mm, y - 2 * mm)
         
         # --- LIGNES DE VENTE ---
-        p.setFont("Helvetica", 10)
+        p.setFont("Helvetica", 8)
         for ligne in vente.lignes.all():
-            y -= 25
-            if y < 100:
-                p.showPage()
-                y = height - 50
-            p.drawString(50, y, f"{ligne.article.nom[:35]}")
-            p.drawString(280, y, f"{ligne.article.prix_vente}")
-            p.drawString(380, y, f"{ligne.quantite}")
-            p.drawString(480, y, f"{ligne.sous_total}")
+            y -= 6 * mm
+            # Nom de l'article (on coupe si trop long pour éviter de déborder)
+            p.drawString(7 * mm, y, f"{ligne.article.nom[:22]}")
+            # Prix et quantité sur la ligne d'en dessous pour gagner de la place
+            y -= 4 * mm
+            p.drawString(10 * mm, y, f"{ligne.quantite} x {ligne.article.prix_vente}")
+            p.drawRightString(width_ticket - 7 * mm, y, f"{ligne.sous_total}")
+            y -= 2 * mm # Petit espace entre articles
 
-        # --- TOTAL EN BAS ---
-        y -= 40
-        p.line(350, y + 10, width - 50, y + 10)
-        p.setFont("Helvetica-Bold", 14)
-        p.drawString(350, y, f"TOTAL À PAYER :")
-        p.drawString(480, y, f"{vente.total_ttc} {vente.entreprise.devise}")
+        # --- TOTAL ---
+        y -= 8 * mm
+        p.line(30 * mm, y + 5 * mm, width_ticket - 5 * mm, y + 5 * mm)
+        p.setFont("Helvetica-Bold", 11)
+        p.drawString(7 * mm, y, "TOTAL:")
+        p.drawRightString(width_ticket - 7 * mm, y, f"{vente.total_ttc} {vente.entreprise.devise}")
 
         # --- PIED DE PAGE ---
-        p.setFont("Helvetica-Oblique", 9)
-        p.drawCentredString(width / 2, 50, "Merci de votre confiance ! À très bientôt.")
-        p.drawCentredString(width / 2, 35, "NB: Les marchandises vendues ne sont ni reprises ni échangées.")
+        y -= 15 * mm
+        p.setFont("Helvetica-Oblique", 7)
+        p.drawCentredString(width_ticket / 2, y, "Merci de votre confiance !")
+        p.drawCentredString(width_ticket / 2, y - 4 * mm, "Marchandises ni reprises ni échangées.")
         
         p.showPage()
         p.save()
