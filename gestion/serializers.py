@@ -111,19 +111,29 @@ class LigneVenteSerializer(serializers.ModelSerializer):
 
 
 class VenteSerializer(serializers.ModelSerializer):
-    lignes = LigneVenteSerializer(many=True) # Retrait de write_only pour faciliter certains retours
-    client_nom = serializers.CharField(source='client.nom', read_only=True)
-    client_telephone = serializers.CharField(source='client.telephone', read_only=True)
+    lignes = LigneVenteSerializer(many=True, read_only=True) 
+    client_nom = serializers.CharField(source='client.nom', read_only=True, default="")
+    client_telephone = serializers.CharField(source='client.telephone', read_only=True, default="")
     vendeur_nom = serializers.CharField(source='vendeur.username', read_only=True)
+    
+    # Ajoute ce champ pour garantir un format stable à Flutter
+    date_vente_formatee = serializers.DateTimeField(
+        source='date_vente', 
+        format="%Y-%m-%d %H:%M", 
+        read_only=True
+    )
 
     class Meta:
         model = Vente
         fields = (
-            'id', 'client', 'client_nom', 'nom_client_libre', 'client_telephone','telephone_client_libre', 'date_vente', 
-            'total_ttc', 'mode_paiement', 'statut', 'lignes', 'numero_sequentiel', 'vendeur_nom'
+            'id', 'client', 'client_nom', 'nom_client_libre', 
+            'client_telephone', 'telephone_client_libre', 'date_vente', 
+            'date_vente_formatee', # <--- Nouveau
+            'total_ttc', 'mode_paiement', 'statut', 'lignes', 
+            'numero_sequentiel', 'vendeur_nom'
         )
         read_only_fields = ('total_ttc', 'vendeur', 'entreprise', 'numero_sequentiel', 'statut')
-
+    
     @transaction.atomic
     def create(self, validated_data):
         lignes_data = validated_data.pop('lignes')

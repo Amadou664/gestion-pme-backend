@@ -166,16 +166,22 @@ class VenteViewSet(viewsets.ModelViewSet):
     serializer_class = VenteSerializer
     
     def get_queryset(self):
-        # On définit la base du queryset
+        # 1. On récupère la base
         queryset = Vente.objects.filter(entreprise=self.request.user.entreprise)\
-                            .select_related('client', 'vendeur')\
-                            .prefetch_related('lignes__article')\
-                            .order_by('-date_vente')
+                        .select_related('client', 'vendeur')\
+                        .prefetch_related('lignes__article')\
+                        .order_by('-date_vente')
     
-        # ON APPLIQUE LE FILTRE AVANT LE RETURN
+        # 2. Filtrage par date (Correction du décalage possible)
         date_param = self.request.query_params.get('date')
         if date_param:
+            # On filtre explicitement sur la partie 'date' du champ DateTime
             queryset = queryset.filter(date_vente__date=date_param)
+            
+        # 3. Filtrage par client (Optionnel, mais aide ton code Flutter)
+        client_id = self.request.query_params.get('client')
+        if client_id:
+            queryset = queryset.filter(client_id=client_id)
                 
         return queryset
     
