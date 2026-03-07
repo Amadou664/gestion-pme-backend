@@ -111,7 +111,7 @@ class LigneVenteSerializer(serializers.ModelSerializer):
 
 
 class VenteSerializer(serializers.ModelSerializer):
-    lignes = LigneVenteSerializer(many=True, read_only=True) 
+    lignes = LigneVenteSerializer(many=True)
     client_nom = serializers.CharField(source='client.nom', read_only=True, default="")
     client_telephone = serializers.CharField(source='client.telephone', read_only=True, default="")
     vendeur_nom = serializers.CharField(source='vendeur.username', read_only=True)
@@ -136,7 +136,9 @@ class VenteSerializer(serializers.ModelSerializer):
     
     @transaction.atomic
     def create(self, validated_data):
-        lignes_data = validated_data.pop('lignes')
+        lignes_data = validated_data.pop('lignes', [])
+        if not lignes_data:
+            raise serializers.ValidationError("Au moins une ligne de vente est requise.")
         request = self.context.get('request')
         
         # Sécurité : on extrait tout ce qui est passé manuellement par perform_create
