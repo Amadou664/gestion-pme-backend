@@ -23,8 +23,14 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-9vp*nc(e=nk^g4(jakyrz
 
 DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
-CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']
+ALLOWED_HOSTS = os.environ.get(
+    'ALLOWED_HOSTS',
+    'localhost,127.0.0.1,backend-gestion-pme.onrender.com'
+).split(',')
+CSRF_TRUSTED_ORIGINS = os.environ.get(
+    'CSRF_TRUSTED_ORIGINS',
+    'https://backend-gestion-pme.onrender.com'
+).split(',')
 
 # --- CONFIGURATION DRF (API) ---
 REST_FRAMEWORK = {
@@ -151,3 +157,4 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
     "x-requested-with",
 ]
+
