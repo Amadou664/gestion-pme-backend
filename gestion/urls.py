@@ -3,7 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
     ArticleViewSet, ClientViewSet, VenteViewSet, 
-    DepenseViewSet, ReportingViewSet, CommandeViewSet
+    DepenseViewSet, ReportingViewSet, CommandeViewSet, sync_bucket
 )
 
 # Initialisation du routeur
@@ -19,4 +19,5 @@ router.register(r'commandes', CommandeViewSet, basename='commande')
 # IMPORTANT : On définit les urlpatterns sans inclure 'gestion.urls' ici
 urlpatterns = [
     path('', include(router.urls)),
+    path('sync/<str:key>/', sync_bucket, name='sync_bucket'),
 ]

@@ -95,12 +95,21 @@ WSGI_APPLICATION = 'config.wsgi.application'
 APPEND_SLASH = True
 
 # --- BASE DE DONNÉES ---
-DATABASES = {
-    'default': dj_database_url.config(
-        default='postgresql://postgres:Mims2408@localhost:5432/gestion_pme',
-        conn_max_age=600
-    )
-}
+USE_SQLITE_LOCAL = os.environ.get('USE_SQLITE_LOCAL', 'True') == 'True'
+if USE_SQLITE_LOCAL:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+else:
+    DATABASES = {
+        'default': dj_database_url.config(
+            default='postgresql://postgres:Mims2408@localhost:5432/gestion_pme',
+            conn_max_age=600
+        )
+    }
 
 # --- AUTHENTIFICATION ---
 AUTH_USER_MODEL = 'gestion.User'
@@ -143,6 +152,12 @@ CORS_ALLOWED_ORIGINS = [
     "https://ma-gestion-pme.web.app",
     "http://localhost:3000",
     "http://127.0.0.1:8000",
+]
+
+# Autorise Flutter Web local (ports variables comme 5000, 51234, etc.)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://localhost:\d+$",
+    r"^http://127\.0\.0\.1:\d+$",
 ]
 
 # Ajoute ceci pour autoriser Flutter local (Chrome) quel que soit le port

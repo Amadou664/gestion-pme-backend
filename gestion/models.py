@@ -199,3 +199,17 @@ class Commande(models.Model):
     @property
     def reste_a_payer(self):
         return self.total_commande - self.acompte_verse
+
+
+class SyncBucket(models.Model):
+    entreprise = models.ForeignKey(Entreprise, on_delete=models.CASCADE, related_name='sync_buckets')
+    key = models.CharField(max_length=64)
+    data = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('entreprise', 'key')
+        indexes = [models.Index(fields=['entreprise', 'key'])]
+
+    def __str__(self):
+        return f"{self.entreprise_id}:{self.key}"

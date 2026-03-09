@@ -19,8 +19,10 @@ from rest_framework.permissions import IsAuthenticated
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import mm, A4
 from reportlab.lib import colors
+from reportlab.lib.utils import ImageReader
+import requests
 
-from .models import User, Article, Client, Vente, Depense, Commande
+from .models import User, Article, Client, Vente, Depense, Commande, SyncBucket
 from .serializers import (
     EntrepriseRegistrationSerializer, 
     ArticleSerializer, 
@@ -168,6 +170,7 @@ class VenteViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         # 1. On récupère la base
         queryset = Vente.objects.filter(entreprise=self.request.user.entreprise)\
+                        .exclude(statut='annulee')\
                         .select_related('client', 'vendeur')\
                         .prefetch_related('lignes__article')\
                         .order_by('-date_vente')
@@ -237,6 +240,25 @@ class VenteViewSet(viewsets.ModelViewSet):
         # --- EN-TÊTE (Centré pour le ticket) ---
         p.setFont("Helvetica-Bold", 12)
         p.drawCentredString(width_ticket / 2, height_ticket - 15 * mm, f"{vente.entreprise.nom.upper()}")
+
+        # Logo entreprise (si disponible)
+        if vente.entreprise and vente.entreprise.logo:
+            try:
+                logo_url = request.build_absolute_uri(vente.entreprise.logo.url)
+                resp = requests.get(logo_url, timeout=5)
+                if resp.status_code == 200 and resp.content:
+                    logo_img = ImageReader(io.BytesIO(resp.content))
+                    p.drawImage(
+                        logo_img,
+                        5 * mm,
+                        height_ticket - 20 * mm,
+                        width=10 * mm,
+                        height=10 * mm,
+                        preserveAspectRatio=True,
+                        mask='auto',
+                    )
+            except Exception:
+                pass
         
         p.setFont("Helvetica", 8)
         p.drawCentredString(width_ticket / 2, height_ticket - 22 * mm, f"Date: {vente.date_vente.strftime('%d/%m/%Y %H:%M')}")
@@ -377,8 +399,8 @@ def update_avatar(request):
     if logo:
         user.entreprise.logo = logo
         user.entreprise.save()
-        # On construit l'URL complète pour le retour à Flutter
-        logo_url = user.entreprise.logo.url
+        # On construit l'URL absolue pour le retour à Flutter
+        logo_url = request.build_absolute_uri(user.entreprise.logo.url)
 
         return Response({"message": "Logo mis à jour", "entreprise_logo": logo_url})
     
@@ -402,3 +424,40 @@ def update_business_name(request):
         return Response({"message": "Nom de l'entreprise mis à jour", "nom": nouveau_nom})
     
     return Response({"error": "Entreprise introuvable"}, status=404)
+
+
+@api_view(['GET', 'PUT', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def sync_bucket(request, key):
+    allowed_keys = {'quotes_invoices', 'credits_clients', 'clients_loyalty'}
+    if key not in allowed_keys:
+        return Response({"error": "Clé de synchronisation invalide"}, status=400)
+
+    user = request.user
+    if not user.entreprise:
+        return Response({"error": "Utilisateur sans entreprise"}, status=400)
+
+    bucket, _ = SyncBucket.objects.get_or_create(
+        entreprise=user.entreprise,
+        key=key,
+        defaults={'data': []},
+    )
+
+    if request.method == 'GET':
+        return Response({
+            "key": key,
+            "data": bucket.data if isinstance(bucket.data, list) else [],
+            "updated_at": bucket.updated_at.isoformat(),
+        })
+
+    payload = request.data.get('data', [])
+    if not isinstance(payload, list):
+        return Response({"error": "Le champ data doit être une liste"}, status=400)
+
+    bucket.data = payload
+    bucket.save(update_fields=['data', 'updated_at'])
+    return Response({
+        "ok": True,
+        "key": key,
+        "updated_at": bucket.updated_at.isoformat(),
+    })
