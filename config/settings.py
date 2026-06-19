@@ -58,6 +58,8 @@ DEBUG = _env_bool("DEBUG", default=False)
 
 DEFAULT_ALLOWED_HOSTS = [
     'backend-gestion-pme.onrender.com',
+    '.railway.app',
+    '.up.railway.app',
     'localhost',
     '127.0.0.1',
 ]
@@ -70,7 +72,7 @@ DEFAULT_FRONTEND_ORIGINS = [
 FRONTEND_ORIGINS = _env_csv('FRONTEND_ORIGINS', DEFAULT_FRONTEND_ORIGINS)
 ALLOWED_HOSTS = _merge_unique(_env_csv('ALLOWED_HOSTS', DEFAULT_ALLOWED_HOSTS), DEFAULT_ALLOWED_HOSTS)
 CSRF_TRUSTED_ORIGINS = _merge_unique(
-    ['https://backend-gestion-pme.onrender.com'],
+    ['https://backend-gestion-pme.onrender.com', 'https://*.railway.app', 'https://*.up.railway.app'],
     FRONTEND_ORIGINS,
 )
 
