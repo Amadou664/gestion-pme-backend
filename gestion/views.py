@@ -26,7 +26,7 @@ except ImportError:
     canvas = mm = ImageReader = None
 
 from .models import (
-    User, Article, Client, Vente, Depense, Commande,
+    User, Article, Client, Vente, LigneVente, Depense, Commande,
     Fournisseur, AchatFournisseur, PaiementCredit, MouvementCaisse, MODES_PAIEMENT,
 )
 from .role_permissions import RoleBasedPermission
@@ -746,16 +746,57 @@ class ReportingViewSet(viewsets.ViewSet):
         marge     = total_ca - total_cmv
         benefice  = (marge + total_acomptes) - total_depenses
 
+        # Top 5 produits les plus vendus (par quantité)
+        top_articles_qs = (
+            LigneVente.objects
+            .filter(vente__in=Vente.objects.filter(vq))
+            .values('article__nom')
+            .annotate(
+                qte=Sum('quantite'),
+                ca=Sum(F('quantite') * F('prix_unitaire'), output_field=DecimalField())
+            )
+            .order_by('-qte')[:5]
+        )
+        top_produits = [
+            {
+                'nom': r['article__nom'] or 'Article supprimé',
+                'qte': int(r['qte'] or 0),
+                'ca':  float(r['ca'] or 0),
+            }
+            for r in top_articles_qs
+        ]
+
+        # Top 5 clients par montant total acheté
+        top_clients_qs = (
+            Vente.objects.filter(vq)
+            .values('nom_client_libre', 'client__nom')
+            .annotate(
+                nb=Count('id'),
+                total=Sum('total_ttc')
+            )
+            .order_by('-total')[:5]
+        )
+        top_clients = [
+            {
+                'nom':      r['nom_client_libre'] or r['client__nom'] or 'Client libre',
+                'nb_achats': r['nb'],
+                'total':    float(r['total'] or 0),
+            }
+            for r in top_clients_qs
+        ]
+
         return Response({
-            'chiffre_affaires':      float(total_ca),
-            'marge_brute':           float(marge),
-            'total_depenses':        float(total_depenses),
-            'total_acomptes':        float(total_acomptes),
+            'chiffre_affaires':       float(total_ca),
+            'marge_brute':            float(marge),
+            'total_depenses':         float(total_depenses),
+            'total_acomptes':         float(total_acomptes),
             'total_credits_en_cours': float(total_credits),
-            'achats_fournisseurs':   float(achats_fournisseur),
-            'benefice_net':          float(benefice),
-            'devise':                ent.devise,
-            'chart_points':          self._chart_points(vq, dq, cq),
+            'achats_fournisseurs':    float(achats_fournisseur),
+            'benefice_net':           float(benefice),
+            'devise':                 ent.devise,
+            'chart_points':           self._chart_points(vq, dq, cq),
+            'top_produits':           top_produits,
+            'top_clients':            top_clients,
         })
 
     @action(detail=False, methods=['get'], url_path='daily-report')
