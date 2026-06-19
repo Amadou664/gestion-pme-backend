@@ -1,6 +1,19 @@
 from django.contrib.auth.models import AnonymousUser
 from rest_framework.authtoken.models import Token
 from django.utils.deprecation import MiddlewareMixin
+from django.utils import timezone
+
+
+class ApiCsrfExemptMiddleware(MiddlewareMixin):
+    """
+    Les endpoints REST `/api/` utilisent l'authentification Token.
+    On evite que CsrfViewMiddleware bloque les POST/PATCH/DELETE JSON de
+    Flutter Web, tout en gardant la protection CSRF pour `/admin/`.
+    """
+    def process_request(self, request):
+        path = request.path_info or ''
+        if path.startswith('/api/'):
+            request._dont_enforce_csrf_checks = True
 
 class TokenURLMiddleware(MiddlewareMixin):
     """
@@ -24,3 +37,19 @@ class TokenURLMiddleware(MiddlewareMixin):
             except Token.DoesNotExist:
                 # Si le token est invalide, on laisse AnonymousUser
                 pass
+
+        auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        if auth_header.lower().startswith('token '):
+            token_key = auth_header.split(' ', 1)[1].strip()
+            try:
+                token = Token.objects.select_related('user').get(key=token_key)
+                request.user = token.user
+            except Token.DoesNotExist:
+                pass
+
+        user = getattr(request, 'user', None)
+        if getattr(user, 'is_authenticated', False):
+            now = timezone.now()
+            last_seen = getattr(user, 'last_seen', None)
+            if last_seen is None or last_seen < now - timezone.timedelta(seconds=30):
+                type(user).objects.filter(pk=user.pk).update(last_seen=now)

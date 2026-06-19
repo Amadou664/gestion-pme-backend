@@ -10,9 +10,13 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
-import dj_database_url
+try:
+    import dj_database_url
+except ImportError:  # pragma: no cover - fallback local when optional package is absent
+    dj_database_url = None
 from pathlib import Path
 import os
+from importlib.util import find_spec
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -21,16 +25,62 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # On récupère la clé depuis Render, sinon on utilise une clé par défaut pour le local
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-9vp*nc(e=nk^g4(jakyrz1_uephzyxfmtsm3w(jsb+0ce11gwv')
 
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
 
-ALLOWED_HOSTS = ['backend-gestion-pme.onrender.com', 'localhost', '127.0.0.1']
-CSRF_TRUSTED_ORIGINS = ['https://backend-gestion-pme.onrender.com']
+
+def _env_csv(name: str, default=()):
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return list(default)
+    return [item.strip() for item in str(raw).split(",") if item.strip()]
+
+
+def _merge_unique(*groups):
+    merged = []
+    for group in groups:
+        for value in group:
+            if value and value not in merged:
+                merged.append(value)
+    return merged
+
+
+def _module_available(name: str) -> bool:
+    return find_spec(name) is not None
+
+
+# IMPORTANT: ne jamais activer DEBUG par défaut en production.
+# Mettre DEBUG=True seulement via variable d'environnement en local.
+DEBUG = _env_bool("DEBUG", default=False)
+
+DEFAULT_ALLOWED_HOSTS = [
+    'backend-gestion-pme.onrender.com',
+    'localhost',
+    '127.0.0.1',
+]
+DEFAULT_FRONTEND_ORIGINS = [
+    'https://gestion-pme.netlify.app',
+    'https://ma-gestion-pme.web.app',
+    'https://gestion-pme-pro-2026.web.app',
+    'https://gestion-pme-pro-2026.firebaseapp.com',
+]
+FRONTEND_ORIGINS = _env_csv('FRONTEND_ORIGINS', DEFAULT_FRONTEND_ORIGINS)
+ALLOWED_HOSTS = _merge_unique(_env_csv('ALLOWED_HOSTS', DEFAULT_ALLOWED_HOSTS), DEFAULT_ALLOWED_HOSTS)
+CSRF_TRUSTED_ORIGINS = _merge_unique(
+    ['https://backend-gestion-pme.onrender.com'],
+    FRONTEND_ORIGINS,
+)
 
 # --- CONFIGURATION DRF (API) ---
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
+        # SessionAuthentication removed: it enforces CSRF on every POST even when
+        # ApiCsrfExemptMiddleware is active, breaking Flutter Web token-auth requests.
+        # Admin (/admin/) keeps its own session-based CSRF separately.
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
@@ -61,12 +111,26 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware', # <--- AJOUTÉ : Pour les fichiers statiques sur Render
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
+    'gestion.middleware.ApiCsrfExemptMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware', 
     'django.contrib.messages.middleware.MessageMiddleware',
     'gestion.middleware.TokenURLMiddleware', 
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+if not _module_available('cloudinary_storage'):
+    INSTALLED_APPS = [app for app in INSTALLED_APPS if app != 'cloudinary_storage']
+
+if not _module_available('cloudinary'):
+    INSTALLED_APPS = [app for app in INSTALLED_APPS if app != 'cloudinary']
+
+if not _module_available('corsheaders'):
+    INSTALLED_APPS = [app for app in INSTALLED_APPS if app != 'corsheaders']
+    MIDDLEWARE = [mw for mw in MIDDLEWARE if mw != 'corsheaders.middleware.CorsMiddleware']
+
+if not _module_available('whitenoise'):
+    MIDDLEWARE = [mw for mw in MIDDLEWARE if mw != 'whitenoise.middleware.WhiteNoiseMiddleware']
 
 ROOT_URLCONF = 'config.urls'
 
@@ -90,9 +154,16 @@ APPEND_SLASH = True
 
 # --- BASE DE DONNÉES ---
 DATABASES = {
-    'default': dj_database_url.config(
-        default='postgresql://postgres:Mims2408@localhost:5432/gestion_pme',
-        conn_max_age=600
+    'default': (
+        dj_database_url.config(
+            default=os.environ.get('DATABASE_URL', f"sqlite:///{BASE_DIR / 'db.sqlite3'}"),
+            conn_max_age=600
+        )
+        if dj_database_url
+        else {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     )
 }
 
@@ -129,14 +200,23 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.environ.get('CLOUDINARY_API_SECRET', 'IrnD-zoD_NGRWuJIZF_WRHiizKU'),
 }
 
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
+if not _module_available('whitenoise'):
+    STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
+if _module_available('cloudinary_storage'):
+    DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 # --- CORS ---
-CORS_ALLOWED_ORIGINS = [
-    "https://gestion-pme.netlify.app",
-    "https://ma-gestion-pme.web.app",
-    "http://localhost:3000",
-    "http://127.0.0.1:8000",
+CORS_ALLOWED_ORIGINS = _merge_unique(
+    FRONTEND_ORIGINS,
+    [
+        "http://localhost:3000",
+        "http://127.0.0.1:8000",
+    ],
+)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^http://localhost:\d+$",
+    r"^http://127\.0\.0\.1:\d+$",
 ]
 
 # Ajoute ceci pour autoriser Flutter local (Chrome) quel que soit le port
