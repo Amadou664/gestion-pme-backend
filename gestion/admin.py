@@ -90,7 +90,7 @@ class VenteAdmin(admin.ModelAdmin):
 @admin.register(LigneVente)
 class LigneVenteAdmin(admin.ModelAdmin):
     list_display  = ('vente', 'article', 'quantite', 'prix_unitaire', 'sous_total')
-    search_fields = ('article__designation', 'vente__numero_sequentiel')
+    search_fields = ('article__nom', 'vente__numero_sequentiel')
 
 
 # ─── PAIEMENTS CRÉDIT ─────────────────────────────────────────────────────────
