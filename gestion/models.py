@@ -24,18 +24,33 @@ MODES_PAIEMENT = [
 
 # 1. Entreprises
 class Entreprise(models.Model):
+    PLANS = [('gratuit', 'Gratuit'), ('premium', 'Premium')]
+
     nom              = models.CharField(max_length=100)
     logo             = models.ImageField(upload_to='logos/', blank=True, null=True)
     devise           = models.CharField(max_length=3, default='CFA')
     tva_default      = models.DecimalField(max_digits=5, decimal_places=2, default=20.00)
     couleur_primaire = models.CharField(max_length=7, default='#1976D2')
     created_at       = models.DateTimeField(auto_now_add=True)
+    plan             = models.CharField(max_length=20, choices=PLANS, default='gratuit')
+    plan_expire      = models.DateField(null=True, blank=True,
+                           help_text="Date d'expiration du plan Premium. Vide = sans limite.")
 
     class Meta:
         verbose_name_plural = "Entreprises"
 
     def __str__(self):
         return self.nom
+
+    @property
+    def plan_actif(self):
+        from django.utils import timezone
+        if self.plan == 'premium':
+            if self.plan_expire is None:
+                return 'premium'
+            if self.plan_expire >= timezone.now().date():
+                return 'premium'
+        return 'gratuit'
 
 
 # 2. Utilisateurs

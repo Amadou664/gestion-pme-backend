@@ -98,15 +98,17 @@ class CustomAuthToken(ObtainAuthToken):
             ent = user.entreprise
             logo_url = _absolute_media_url(request, ent.logo if ent else None)
             return Response({
-                'token':          token.key,
-                'user_id':        user.pk,
-                'username':       user.username,
-                'email':          user.email,
-                'role':           getattr(user, 'role', 'admin'),
-                'entreprise_id':  ent.id if ent else None,
-                'entreprise_nom': ent.nom if ent else 'Admin',
+                'token':           token.key,
+                'user_id':         user.pk,
+                'username':        user.username,
+                'email':           user.email,
+                'role':            getattr(user, 'role', 'admin'),
+                'entreprise_id':   ent.id if ent else None,
+                'entreprise_nom':  ent.nom if ent else 'Admin',
                 'entreprise_logo': logo_url,
-                'devise':         ent.devise if ent else 'CFA',
+                'devise':          ent.devise if ent else 'CFA',
+                'plan':            ent.plan_actif if ent else 'gratuit',
+                'plan_expire':     ent.plan_expire.isoformat() if ent and ent.plan_expire else None,
             })
         return Response({'error': 'Identifiants invalides'}, status=400)
 
