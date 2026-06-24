@@ -35,6 +35,9 @@ urlpatterns = [
     path('api/auth/update-avatar/', views.update_avatar, name='update_avatar'),
     path('api/auth/update-business-name/', views.update_business_name, name='update_name'),
     
+    # Plan actif — vérifié par l'app toutes les 30 secondes
+    path('api/plan/', views.current_plan, name='current_plan'),
+
     # Inclusion des autres routes (gestion/urls.py)
     path('api/', include('gestion.urls')),
 ]

@@ -1013,3 +1013,19 @@ def update_business_name(request):
         user.entreprise.save()
         return Response({"message": "Nom mis à jour", "nom": nouveau_nom})
     return Response({"error": "Entreprise introuvable"}, status=404)
+
+
+# ─────────────────────────────────────────────
+# PLAN ACTIF — vérifié en temps réel par l'app
+# ─────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def current_plan(request):
+    entreprise = getattr(request.user, 'entreprise', None)
+    if not entreprise:
+        return Response({'plan': 'gratuit', 'plan_expire': None})
+    return Response({
+        'plan': entreprise.plan_actif,
+        'plan_expire': entreprise.plan_expire.isoformat() if entreprise.plan_expire else None,
+    })
