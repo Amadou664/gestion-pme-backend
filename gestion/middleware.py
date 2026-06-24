@@ -52,4 +52,5 @@ class TokenURLMiddleware(MiddlewareMixin):
             now = timezone.now()
             last_seen = getattr(user, 'last_seen', None)
             if last_seen is None or last_seen < now - timezone.timedelta(seconds=30):
-                type(user).objects.filter(pk=user.pk).update(last_seen=now)
+                from django.contrib.auth import get_user_model
+                get_user_model().objects.filter(pk=user.pk).update(last_seen=now)
