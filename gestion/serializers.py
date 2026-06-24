@@ -121,10 +121,13 @@ class EntrepriseRegistrationSerializer(serializers.Serializer):
 
     def create(self, validated_data):
         with transaction.atomic():
+            essai_expire = timezone.now().date() + timedelta(days=14)
             entreprise = Entreprise.objects.create(
                 nom=validated_data['entreprise_nom'],
                 logo=validated_data.get('logo'),
                 devise=validated_data.get('devise', 'CFA'),
+                plan='premium',
+                plan_expire=essai_expire,
             )
             user = User.objects.create_user(
                 username=validated_data['username'],
