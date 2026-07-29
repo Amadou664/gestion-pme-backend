@@ -5,6 +5,7 @@ from urllib.request import urlopen
 from django.db.models import Sum, F, DecimalField, Q, Count
 from django.db import transaction
 from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from django.contrib.auth import authenticate
 from django.utils import timezone
 from django.db.models.functions import TruncDate
@@ -296,8 +297,8 @@ class VenteViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     @transaction.atomic
     def annuler(self, request, pk=None):
-        vente = Vente.objects.select_for_update().get(
-            pk=pk, entreprise=request.user.entreprise
+        vente = get_object_or_404(
+            Vente.objects.select_for_update(), pk=pk, entreprise=request.user.entreprise
         )
         if vente.statut == 'annulee':
             return Response({'error': 'Cette vente est déjà annulée.'}, status=400)
@@ -322,8 +323,8 @@ class VenteViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def payer_credit(self, request, pk=None):
         """Enregistrer un paiement sur une vente à crédit."""
-        vente = Vente.objects.select_for_update().get(
-            pk=pk, entreprise=request.user.entreprise
+        vente = get_object_or_404(
+            Vente.objects.select_for_update(), pk=pk, entreprise=request.user.entreprise
         )
         if vente.statut != 'credit':
             return Response({'error': 'Cette vente n\'est pas à crédit.'}, status=400)

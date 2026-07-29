@@ -316,27 +316,47 @@ class VenteSerializer(serializers.ModelSerializer):
             vendeur=vendeur, entreprise=entreprise, statut=statut, **validated_data
         )
 
-        total = Decimal('0.00')
+        # Verrouille chaque article une seule fois (même s'il apparaît sur
+        # plusieurs lignes) pour éviter que deux lignes du même article ne
+        # se basent chacune sur le stock initial et s'écrasent l'une l'autre.
+        article_ids = {ligne_data['article'].pk for ligne_data in lignes_data}
+        articles_verrouilles = {
+            a.pk: a for a in Article.objects.select_for_update().filter(pk__in=article_ids)
+        }
+
+        quantite_totale_par_article = {}
         for ligne_data in lignes_data:
-            article   = ligne_data['article']
-            quantite  = int(ligne_data.get('quantite', 0))
-            if article.stock < quantite:
+            article_id = ligne_data['article'].pk
+            quantite = int(ligne_data.get('quantite', 0))
+            quantite_totale_par_article[article_id] = (
+                quantite_totale_par_article.get(article_id, 0) + quantite
+            )
+
+        for article_id, quantite_totale in quantite_totale_par_article.items():
+            article = articles_verrouilles[article_id]
+            if article.stock < quantite_totale:
                 raise serializers.ValidationError(
                     f"Stock insuffisant pour {article.nom}. Disponible : {article.stock}"
                 )
-            prix_unitaire = Decimal(str(article.prix_vente or '0'))
-            remise_pct    = Decimal(str(ligne_data.get('remise_pct', 0)))
-            reduction     = (prix_unitaire * remise_pct) / Decimal('100')
-            sous_total    = ((prix_unitaire - reduction) * quantite).quantize(Decimal('0.01'))
 
-            article.stock -= quantite
-            article.save(update_fields=['stock'])
+        total = Decimal('0.00')
+        for ligne_data in lignes_data:
+            article        = articles_verrouilles[ligne_data['article'].pk]
+            quantite       = int(ligne_data.get('quantite', 0))
+            prix_unitaire  = Decimal(str(article.prix_vente or '0'))
+            remise_pct     = Decimal(str(ligne_data.get('remise_pct', 0)))
+            reduction      = (prix_unitaire * remise_pct) / Decimal('100')
+            sous_total     = ((prix_unitaire - reduction) * quantite).quantize(Decimal('0.01'))
 
             LigneVente.objects.create(
                 vente=vente, article=article, quantite=quantite,
                 prix_unitaire=prix_unitaire, remise_pct=remise_pct, sous_total=sous_total,
             )
             total += sous_total
+
+        for article_id, quantite_totale in quantite_totale_par_article.items():
+            articles_verrouilles[article_id].stock -= quantite_totale
+        Article.objects.bulk_update(articles_verrouilles.values(), ['stock'])
 
         vente.total_ttc = total.quantize(Decimal('0.01'))
         vente.save(update_fields=['total_ttc'])

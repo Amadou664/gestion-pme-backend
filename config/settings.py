@@ -23,7 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # --- SÉCURITÉ ---
 # On récupère la clé depuis Render, sinon on utilise une clé par défaut pour le local
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-9vp*nc(e=nk^g4(jakyrz1_uephzyxfmtsm3w(jsb+0ce11gwv')
+SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-dev-only-do-not-use-in-production')
 
 def _env_bool(name: str, default: bool = False) -> bool:
     raw = os.environ.get(name)
